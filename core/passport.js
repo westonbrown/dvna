@@ -2,6 +2,34 @@ var db = require('../models')
 var LocalStrategy = require('passport-local').Strategy
 var bCrypt = require('bcrypt')
 
+var MAX_FAILED_LOGINS = 5
+var LOCKOUT_MS = 15 * 60 * 1000
+var failedLogins = {}
+
+var loginKey = function (req, username) {
+    return String(req.ip) + '|' + String(username).toLowerCase()
+}
+
+var isLockedOut = function (key) {
+    var entry = failedLogins[key]
+    if (!entry) {
+        return false
+    }
+    if (Date.now() - entry.first > LOCKOUT_MS) {
+        delete failedLogins[key]
+        return false
+    }
+    return entry.count >= MAX_FAILED_LOGINS
+}
+
+var recordFailure = function (key) {
+    var entry = failedLogins[key]
+    if (!entry || Date.now() - entry.first > LOCKOUT_MS) {
+        entry = failedLogins[key] = { count: 0, first: Date.now() }
+    }
+    entry.count++
+}
+
 
 module.exports = function (passport) {
 
@@ -28,17 +56,24 @@ module.exports = function (passport) {
             passReqToCallback: true
         },
         function (req, username, password, done) {
+            var key = loginKey(req, username)
+            if (isLockedOut(key)) {
+                return done(null, false, req.flash('danger', 'Too many failed attempts. Try again later'))
+            }
             db.User.findOne({
                 where: {
                     'login': username
                 }
             }).then(function (user) {
                 if (!user) {
+                    recordFailure(key)
                     return done(null, false, req.flash('danger', 'Invalid Credentials'))
                 }
                 if (!isValidPassword(user, password)) {
+                    recordFailure(key)
                     return done(null, false, req.flash('danger', 'Invalid Credentials'))
                 }
+                delete failedLogins[key]
                 return done(null, user);
             });
         }))

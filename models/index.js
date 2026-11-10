@@ -7,11 +7,14 @@ var env = process.env.NODE_ENV || "development";
 var config = require("../config/db.js")
 
 if (process.env.DATABASE_URL) {
-  var sequelize = new Sequelize(process.env.DATABASE_URL);
+  var sequelize = new Sequelize(process.env.DATABASE_URL, {
+    logging: false
+  });
 } else {
   var sequelize = new Sequelize(config.database, config.username, config.password, {
     host: config.host,
-    dialect: config.dialect
+    dialect: config.dialect,
+    logging: false
   });
 }
 

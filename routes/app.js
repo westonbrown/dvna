@@ -1,6 +1,11 @@
 var router = require('express').Router()
 var appHandler = require('../core/appHandler')
 var authHandler = require('../core/authHandler')
+var csrfProtection = require('csurf')()
+var exposeCsrfToken = function (req, res, next) {
+    res.locals.csrfToken = req.csrfToken()
+    next()
+}
 
 module.exports = function () {
     router.get('/', authHandler.isAuthenticated, function (req, res) {
@@ -13,7 +18,7 @@ module.exports = function () {
         })
     })
 
-    router.get('/ping', authHandler.isAuthenticated, function (req, res) {
+    router.get('/ping', authHandler.isAuthenticated, csrfProtection, exposeCsrfToken, function (req, res) {
         res.render('app/ping', {
             output: null
         })
@@ -39,9 +44,9 @@ module.exports = function () {
         })
     })
 
-    router.get('/admin/usersapi', authHandler.isAuthenticated, appHandler.listUsersAPI)
+    router.get('/admin/usersapi', authHandler.isAuthenticated, authHandler.isAdmin, appHandler.listUsersAPI)
 
-    router.get('/admin/users', authHandler.isAuthenticated, function(req, res){
+    router.get('/admin/users', authHandler.isAuthenticated, authHandler.isAdmin, function(req, res){
         res.render('app/adminusers')
     })
 
@@ -49,7 +54,7 @@ module.exports = function () {
 
     router.post('/usersearch', authHandler.isAuthenticated, appHandler.userSearch)
 
-    router.post('/ping', authHandler.isAuthenticated, appHandler.ping)
+    router.post('/ping', authHandler.isAuthenticated, csrfProtection, exposeCsrfToken, appHandler.ping)
 
     router.post('/products', authHandler.isAuthenticated, appHandler.productSearch)
 
