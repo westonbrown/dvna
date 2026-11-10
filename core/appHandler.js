@@ -1,14 +1,15 @@
 var db = require('../models')
 var bCrypt = require('bcrypt')
-const exec = require('child_process').exec;
+const execFile = require('child_process').execFile;
 var mathjs = require('mathjs')
 var libxmljs = require("libxmljs");
 var serialize = require("node-serialize")
 const Op = db.Sequelize.Op
 
 module.exports.userSearch = function (req, res) {
-	var query = "SELECT name,id FROM Users WHERE login='" + req.body.login + "'";
+	var query = "SELECT name,id FROM Users WHERE login=:login";
 	db.sequelize.query(query, {
+		replacements: { login: req.body.login },
 		model: db.User
 	}).then(user => {
 		if (user.length) {
@@ -36,7 +37,13 @@ module.exports.userSearch = function (req, res) {
 }
 
 module.exports.ping = function (req, res) {
-	exec('ping -c 2 ' + req.body.address, function (err, stdout, stderr) {
+	var address = String(req.body.address || '').trim()
+	if (!/^[a-zA-Z0-9.:_-]+$/.test(address)) {
+		return res.render('app/ping', {
+			output: 'Invalid address'
+		})
+	}
+	execFile('ping', ['-c', '2', address], function (err, stdout, stderr) {
 		output = stdout + stderr
 		res.render('app/ping', {
 			output: output
@@ -144,7 +151,7 @@ module.exports.userEdit = function (req, res) {
 module.exports.userEditSubmit = function (req, res) {
 	db.User.find({
 		where: {
-			'id': req.body.id
+			'id': req.user.id
 		}		
 	}).then(user =>{
 		if(req.body.password.length>0){
@@ -175,7 +182,7 @@ module.exports.userEditSubmit = function (req, res) {
 		user.save().then(function () {
 			req.flash('success',"Updated successfully")
 			res.render('app/useredit', {
-				userId: req.body.id,
+				userId: req.user.id,
 				userEmail: req.body.email,
 				userName: req.body.name,
 			})
@@ -192,9 +199,13 @@ module.exports.redirect = function (req, res) {
 }
 
 module.exports.calc = function (req, res) {
-	if (req.body.eqn) {
+	if (req.body.eqn && !/^[0-9\s+\-*/^%().]+$/.test(String(req.body.eqn))) {
 		res.render('app/calc', {
-			output: mathjs.eval(req.body.eqn)
+			output: 'Enter a valid math string like (3+3)*2'
+		})
+	} else if (req.body.eqn) {
+		res.render('app/calc', {
+			output: mathjs.eval(String(req.body.eqn))
 		})
 	} else {
 		res.render('app/calc', {
@@ -204,7 +215,9 @@ module.exports.calc = function (req, res) {
 }
 
 module.exports.listUsersAPI = function (req, res) {
-	db.User.findAll({}).then(users => {
+	db.User.findAll({
+		attributes: ['id', 'name', 'login', 'email', 'role']
+	}).then(users => {
 		res.status(200).json({
 			success: true,
 			users: users
@@ -215,8 +228,8 @@ module.exports.listUsersAPI = function (req, res) {
 module.exports.bulkProductsLegacy = function (req,res){
 	// TODO: Deprecate this soon
 	if(req.files.products){
-		var products = serialize.unserialize(req.files.products.data.toString('utf8'))
-		products.forEach( function (product) {
+			var products = JSON.parse(req.files.products.data.toString('utf8'))
+			products.forEach( function (product) {
 			var newProduct = new db.Product()
 			newProduct.name = product.name
 			newProduct.code = product.code
@@ -232,7 +245,7 @@ module.exports.bulkProductsLegacy = function (req,res){
 
 module.exports.bulkProducts =  function(req, res) {
 	if (req.files.products && req.files.products.mimetype=='text/xml'){
-		var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:true,noblanks:true})
+		var products = libxmljs.parseXmlString(req.files.products.data.toString('utf8'), {noent:false,nonet:true,noblanks:true})
 		products.root().childNodes().forEach( product => {
 			var newProduct = new db.Product()
 			newProduct.name = product.childNodes()[0].text()
